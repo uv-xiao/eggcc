@@ -16,7 +16,7 @@ def make_cfgs(bench, data_dir):
     # On Linux, sometimes it's called opt-18, while on mac it seems to be just opt
     # Also, on some machines, just running `opt-18` hangs, so we pass the version flag
     # Catch the output using shell
-    opt18_res = subprocess.run("opt-18", shell=True, capture_output=True, text=True)
+    opt18_res = subprocess.run("opt-18 --help", shell=True, capture_output=True, text=True)
     if opt18_res.returncode == 0:
       opt = "opt-18"
     else:
@@ -62,8 +62,11 @@ if __name__ == '__main__':
   data_dir = os.sys.argv[1]
   benchmarks = os.listdir(data_dir)
 
-  # get the number of cores on this machine 
+#   for bench in benchmarks:
+#     make_cfgs(bench, data_dir)
+#   get the number of cores on this machine 
   parallelism = os.cpu_count()
+  print(f"Running with {parallelism} threads")
   with concurrent.futures.ThreadPoolExecutor(max_workers = parallelism) as executor:
     futures = {executor.submit(make_cfgs, bench, data_dir) for bench in benchmarks}
 
@@ -74,3 +77,5 @@ if __name__ == '__main__':
         print(f"Shutting down executor due to error: {e}")
         executor.shutdown(wait=False, cancel_futures=True)
         raise e
+
+  print("Done!")
