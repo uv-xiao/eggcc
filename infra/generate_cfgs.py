@@ -6,6 +6,7 @@ import concurrent.futures
 import subprocess
 
 def make_cfgs(bench, data_dir):
+  print(f"Generating CFGs for {bench}", flush=True)
   bench_path = f"{data_dir}/{bench}"
   runmodes = os.listdir(bench_path)
   

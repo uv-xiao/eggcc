@@ -1,46 +1,82 @@
+#[derive(Debug)]
+pub enum CompilerPass {
+    // Run the given egglog schedule, then extract
+    Schedule(String),
+    // Run inlining and the given egglog schedule, then extract
+    InlineWithSchedule(String),
+}
+
+impl CompilerPass {
+    pub fn egglog_schedule(&self) -> &str {
+        match self {
+            CompilerPass::Schedule(s) => s,
+            CompilerPass::InlineWithSchedule(s) => s,
+        }
+    }
+}
+
 pub(crate) fn helpers() -> String {
     "
-(saturate
+    ;; first, run substitution and drop to saturation
+    ;; these depend on type analysis, always-run, and context
 
-    (saturate type-helpers)
-    (saturate error-checking)
-    state-edge-passthrough
-
+    ;; first, saturate always run
     (saturate
-        (saturate type-helpers)
-        (saturate error-checking)
-        saturating
+        (saturate 
+            (saturate type-helpers)
+            type-analysis)
+        (saturate 
+            (saturate type-helpers)
+            always-run)
+        error-checking)
+
+    ;; second, saturate substitution and drop
+    ;; which depend on context and is-resolved
+    (saturate
+        (saturate 
+            (saturate type-helpers)
+            type-analysis)
+        (saturate is-resolved)
+
+        (saturate subst)
+        apply-subst-unions
+        cleanup-subst
+        (saturate context)
+
+        (saturate drop)
+        apply-drop-unions
+        cleanup-drop
     )
 
-    (saturate drop)
-    apply-drop-unions
-    cleanup-drop
+    (saturate canon)
+    (saturate interval-analysis)
+    ;; memory-helpers TODO run memory helpers for memory optimizations
 
-    (saturate
-        (saturate type-helpers)
-        (saturate error-checking)
-        saturating
-    )
+    ;; finally, subsume now that helpers are done
+    subsume-after-helpers
 
-    (saturate subst)
-    apply-subst-unions
-    cleanup-subst
+    ;; do a boundary analysis for loop invariant code motion
+    boundary-analysis
 
-    (saturate boundary-analysis)
-)
-
-;; be careful to finish dropping and substituting before subsuming things!
-;; otherwise substitution or dropat may not finish, violating the weak linearity invariant
-(saturate subsume-after-helpers)
+    loop-iters-analysis
 "
     .to_string()
 }
 
 fn cheap_optimizations() -> Vec<String> {
-    ["loop-simplify", "memory", "peepholes"]
-        .iter()
-        .map(|opt| opt.to_string())
-        .collect()
+    // TODO enable loop peeling
+    // currently causes saturation issues, probably by creating dead loops that are allowed to have any value
+
+    [
+        "loop-simplify",
+        "interval-rewrite",
+        "always-switch-rewrite",
+        // "memory",
+        "peepholes",
+    ]
+    .iter()
+    .map(|opt| opt.to_string())
+    .collect()
 }
 
 fn optimizations() -> Vec<String> {
@@ -49,7 +85,6 @@ fn optimizations() -> Vec<String> {
         "switch_rewrite",
         "loop-inv-motion",
         "loop-strength-reduction",
-        "loop-peel",
     ]
     .iter()
     .map(|opt| opt.to_string())
@@ -57,33 +92,11 @@ fn optimizations() -> Vec<String> {
     .collect()
 }
 
-fn saturating_rulesets() -> Vec<String> {
-    [
-        "always-run",
-        "passthrough",
-        "canon",
-        "type-analysis",
-        "context",
-        "interval-analysis",
-        "memory-helpers",
-        "always-switch-rewrite",
-        "loop-iters-analysis",
-    ]
-    .iter()
-    .map(|opt| opt.to_string())
-    .collect()
-}
-
 pub fn rulesets() -> String {
     let all_optimizations = optimizations().join("\n");
-    let saturating_combined = saturating_rulesets().join("\n");
     let cheap_optimizations = cheap_optimizations().join("\n");
     format!(
         "
-(unstable-combined-ruleset saturating
-    {saturating_combined}
-)
-
 (unstable-combined-ruleset cheap-optimizations
     {cheap_optimizations}
 )
@@ -95,32 +108,88 @@ pub fn rulesets() -> String {
     )
 }
 
-pub fn mk_sequential_schedule() -> Vec<String> {
+pub fn mk_sequential_schedule() -> Vec<CompilerPass> {
     let helpers = helpers();
-    optimizations()
-        .iter()
-        .map(|optimization| {
-            format!(
-                "
+
+    let mut res = vec![CompilerPass::Schedule(format!(
+        "
+(run-schedule
+   (saturate
+      {helpers}
+      passthrough
+      state-edge-passthrough))"
+    ))];
+    res.push(CompilerPass::Schedule(format!(
+        "
+(run-schedule
+  (repeat 2
+    {helpers}
+    loop-inversion)
+  
+  {helpers})"
+    )));
+    res.push(CompilerPass::Schedule(format!(
+        "
+(run-schedule
+  (repeat 2
+      {helpers}
+      swap-if)
+  {helpers}
+  rec-to-loop
+  {helpers})"
+    )));
+    res.push(CompilerPass::InlineWithSchedule(format!(
+        "
+(run-schedule {helpers})"
+    )));
+    res.extend(optimizations().iter().map(|optimization| {
+        CompilerPass::Schedule(format!(
+            "
 (run-schedule
    {helpers}
    {optimization}
    {helpers})
 "
-            )
-        })
-        .collect()
+        ))
+    }));
+    res
 }
 
-/// Parallel schedule must return a single string,
-/// a schedule that runs optimizations over the egraph.
-pub fn parallel_schedule() -> Vec<String> {
+pub fn parallel_schedule() -> Vec<CompilerPass> {
     let helpers = helpers();
 
-    vec![format!(
-        "
+    vec![
+        CompilerPass::Schedule(format!(
+            "
 (run-schedule
+   (saturate
+      {helpers}
+      passthrough
+      state-edge-passthrough)
+    (repeat 2
+      {helpers}
+      swap-if)
+    {helpers}
+    rec-to-loop
+    {helpers})"
+        )),
+        CompilerPass::Schedule(format!(
+            "
+(run-schedule
+    (repeat 3
+      {helpers}
+      loop-inversion)
 
+    {helpers})"
+        )),
+        CompilerPass::InlineWithSchedule(format!(
+            "
+;; HACK: when INLINE appears in this string
+;; we perform inlining in this pass
+(run-schedule
+    (saturate
+      {helpers}
+      passthrough)
     (repeat 2
         {helpers}
         all-optimizations
@@ -134,5 +203,6 @@ pub fn parallel_schedule() -> Vec<String> {
     {helpers}
 )
 "
-    )]
+        )),
+    ]
 }

@@ -21,7 +21,7 @@ fn rule_for_ctor(ctor: Constructor) -> String {
         .join("\n");
     let pat = ctor.construct(|field| field.var());
     let sort = ctor.sort().name();
-    format!("(rule ((= lhs {pat}) {query}) (({sort}IsResolved lhs)) :ruleset always-run)")
+    format!("(rule ((= lhs {pat}) {query}) (({sort}IsResolved lhs)) :ruleset is-resolved)")
 }
 
 pub(crate) fn rules() -> Vec<String> {
@@ -49,7 +49,7 @@ fn test_is_resolved() -> crate::Result {
             get(switch!(int(0), arg(); parallel!(int(4), int(5))), 0)
         ),
     )
-    .with_arg_types(emptyt(), tuplet!(intt()));
+    .with_arg_types(base(intt()), tuplet!(intt()));
     let add1 = add(arg(), int(1)).add_arg_type(base(intt()));
     let helpers = helpers();
     let build = format!("{myloop}");
@@ -60,7 +60,7 @@ fn test_is_resolved() -> crate::Result {
 
 (let substituted (Subst {ctx} {add1} {myloop}))
 ;; run the IsResolved rules
-(run-schedule (saturate always-run))
+(run-schedule (saturate is-resolved))
 
 (check (ExprIsResolved {add1}))
 ;; substitution hasn't happened
@@ -73,8 +73,8 @@ fn test_is_resolved() -> crate::Result {
     crate::egglog_test(
         &build,
         &check,
-        vec![myloop.to_program(emptyt(), tuplet!(intt()))],
-        Value::Tuple(vec![]),
+        vec![myloop.to_program(base(intt()), tuplet!(intt()))],
+        intv(1),
         // Value::Tuple(vec![]),
         Value::Tuple(vec![Value::Const(Constant::Int(4))]),
         vec![],
