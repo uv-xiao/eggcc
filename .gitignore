@@ -34,3 +34,5 @@ runtime/rt.bc
 runtime/rt.o
 
 .DS_Store
+
+temp/

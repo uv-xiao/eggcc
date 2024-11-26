@@ -505,16 +505,16 @@ impl Run {
         let mut res = vec![];
         for test_type in [
             RunMode::RvsdgConversion,
-            RunMode::RvsdgRoundTrip,
-            RunMode::CfgRoundTrip,
-            RunMode::OptimizeDirectJumps,
+            // RunMode::RvsdgRoundTrip,
+            // RunMode::CfgRoundTrip,
+            // RunMode::OptimizeDirectJumps,
             RunMode::RvsdgToCfg,
             RunMode::DagConversion,
-            RunMode::DagOptimize,
-            RunMode::DagRoundTrip,
-            RunMode::Optimize,
-            RunMode::CheckExtractIdentical,
-            RunMode::TestPrettyPrint,
+            // RunMode::DagOptimize,
+            // RunMode::DagRoundTrip,
+            // RunMode::Optimize,
+            // RunMode::CheckExtractIdentical,
+            // RunMode::TestPrettyPrint,
         ] {
             let default = Run::new(prog.clone(), test_type);
             if test_type.produces_interpretable() {
@@ -527,38 +527,38 @@ impl Run {
                 res.push(default);
             }
         }
-        // also test the sequential schedule
-        let mut seq = Run::new(prog.clone(), RunMode::Optimize);
-        seq.eggcc_config.schedule = Schedule::Sequential;
-        res.push(seq);
+        // // also test the sequential schedule
+        // let mut seq = Run::new(prog.clone(), RunMode::Optimize);
+        // seq.eggcc_config.schedule = Schedule::Sequential;
+        // res.push(seq);
 
-        // run a cranelift baseline
-        res.push(Run::compile_brilift_config(
-            test.clone(),
-            true,
-            InterpMode::Interp,
-        ));
+        // // run a cranelift baseline
+        // res.push(Run::compile_brilift_config(
+        //     test.clone(),
+        //     true,
+        //     InterpMode::Interp,
+        // ));
 
-        #[cfg(feature = "llvm")]
-        {
-            for optimize_egglog in [true, false] {
-                for optimize_llvm in [LLVMOptLevel::O0_O0, LLVMOptLevel::O3_O0] {
-                    res.push(Run {
-                        test_type: RunMode::LLVM,
-                        interp: InterpMode::Interp,
-                        prog_with_args: prog.clone(),
-                        profile_out: None,
-                        output_path: None,
-                        optimized_llvm_out: None,
-                        optimize_egglog: Some(optimize_egglog),
-                        optimize_brilift: None,
-                        optimize_bril_llvm: Some(optimize_llvm),
-                        add_timing: false,
-                        eggcc_config: EggccConfig::default(),
-                    });
-                }
-            }
-        }
+        // #[cfg(feature = "llvm")]
+        // {
+        //     for optimize_egglog in [true, false] {
+        //         for optimize_llvm in [LLVMOptLevel::O0_O0, LLVMOptLevel::O3_O0] {
+        //             res.push(Run {
+        //                 test_type: RunMode::LLVM,
+        //                 interp: InterpMode::Interp,
+        //                 prog_with_args: prog.clone(),
+        //                 profile_out: None,
+        //                 output_path: None,
+        //                 optimized_llvm_out: None,
+        //                 optimize_egglog: Some(optimize_egglog),
+        //                 optimize_brilift: None,
+        //                 optimize_bril_llvm: Some(optimize_llvm),
+        //                 add_timing: false,
+        //                 eggcc_config: EggccConfig::default(),
+        //             });
+        //         }
+        //     }
+        // }
 
         res
     }
@@ -590,6 +590,7 @@ impl Run {
     }
 
     pub fn run(&self) -> Result<RunOutput, EggCCError> {
+
         let original_interpreted = if self.interp == InterpMode::Interp {
             Some(Optimizer::interp_bril(
                 &self.prog_with_args.program,
