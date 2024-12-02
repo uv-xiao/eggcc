@@ -2,137 +2,175 @@ use clap::Parser;
 use dag_in_context::{EggccConfig, Schedule};
 use eggcc::util::{visualize, InterpMode, LLVMOptLevel, Run, RunMode, TestProgram};
 use std::{ffi::OsStr, path::PathBuf};
+use colored::Colorize;
+use std::str::FromStr;
+use std::io::Write;
+
 
 #[derive(Debug, Parser)]
 struct Args {
-    /// A directory for debug output, including
-    /// svgs for the rvsdg, cfgs, ect.
-    #[clap(long)]
-    debug_dir: Option<PathBuf>,
-    /// Configure the output of the tool, which can be an optimized bril program,
-    /// an optimized CFG, or more.
-    /// See documentation for [`RunType`] for different options.
-    #[clap(long, default_value_t = RunMode::Optimize)]
-    run_mode: RunMode,
-    /// Evaluate the resulting program and output
-    /// the result.
-    #[clap(long)]
-    interp: bool,
-    /// Add timing information to the benchmark, measuring cycles before the final print statement.
-    #[clap(long)]
-    add_timing: bool,
-    #[clap(long)]
-    profile_out: Option<PathBuf>,
+  /// A directory for debug output, including
+  /// svgs for the rvsdg, cfgs, ect.
+  #[clap(long)]
+  debug_dir: Option<PathBuf>,
+  /// Configure the output of the tool, which can be an optimized bril program,
+  /// an optimized CFG, or more.
+  /// See documentation for [`RunType`] for different options.
+  #[clap(long, default_value_t = RunMode::Optimize)]
+  run_mode: RunMode,
+  /// Evaluate the resulting program and output
+  /// the result.
+  #[clap(long)]
+  interp: bool,
+  /// Add timing information to the benchmark, measuring cycles before the final print statement.
+  #[clap(long)]
+  add_timing: bool,
+  #[clap(long)]
+  profile_out: Option<PathBuf>,
 
-    /// The bril program to optimize
-    file: PathBuf,
-    /// The arguments to the bril program
-    /// (only used when interpreting)
-    bril_args: Vec<String>,
+  /// The bril program to optimize
+  file: PathBuf,
+  /// The arguments to the bril program
+  /// (only used when interpreting)
+  bril_args: Vec<String>,
 
-    /// Where to put the executable (only for the brillift and llvm modes)
-    #[clap(short)]
-    output_path: Option<String>,
-    /// Where to put the optimized llvm file (for the llvm mode)
-    #[clap(long)]
-    llvm_output_dir: Option<PathBuf>,
-    /// For the LLVM run mode, choose whether to first run eggcc
-    /// to optimize the bril program before going to LLVM.
-    #[clap(long)]
-    optimize_egglog: Option<bool>,
-    /// For the Cranelift run mode, choose between O0 optimization and O3.
-    #[clap(long)]
-    optimize_brilift: Option<bool>,
-    /// For the LLVM run mode, choose between O0 and O3.
-    #[clap(long)]
-    optimize_bril_llvm: Option<LLVMOptLevel>,
-    /// For the eggcc schedule, choose between the sequential and parallel schedules.
-    #[clap(long)]
-    eggcc_schedule: Option<Schedule>,
-    #[clap(long)]
-    stop_after_n_passes: Option<usize>,
+  /// Where to put the executable (only for the brillift and llvm modes)
+  #[clap(short)]
+  output_path: Option<String>,
+  /// Where to put the optimized llvm file (for the llvm mode)
+  #[clap(long)]
+  llvm_output_dir: Option<PathBuf>,
+  /// For the LLVM run mode, choose whether to first run eggcc
+  /// to optimize the bril program before going to LLVM.
+  #[clap(long)]
+  optimize_egglog: Option<bool>,
+  /// For the Cranelift run mode, choose between O0 optimization and O3.
+  #[clap(long)]
+  optimize_brilift: Option<bool>,
+  /// For the LLVM run mode, choose between O0 and O3.
+  #[clap(long)]
+  optimize_bril_llvm: Option<LLVMOptLevel>,
+  /// For the eggcc schedule, choose between the sequential and parallel schedules.
+  #[clap(long)]
+  eggcc_schedule: Option<Schedule>,
+  #[clap(long)]
+  stop_after_n_passes: Option<usize>,
 
-    /// Turn off enforcement that the output program uses
-    /// memory linearly. This can give an idea of what
-    /// extraction is doing.
-    /// WARNING: Produces unsound results!
-    #[clap(long)]
-    no_linearity: bool,
+  /// Turn off enforcement that the output program uses
+  /// memory linearly. This can give an idea of what
+  /// extraction is doing.
+  /// WARNING: Produces unsound results!
+  #[clap(long)]
+  no_linearity: bool,
 }
 
+
 fn main() {
-    let args = Args::parse();
+  let args = Args::parse();
 
-    // enable logging
-    env_logger::init();
-
-    if let Some(debug_dir) = args.debug_dir {
-        if let Result::Err(error) = visualize(TestProgram::BrilFile(args.file.clone()), debug_dir) {
-            eprintln!("{}", error);
-            return;
-        }
-    }
-
-    if args.interp && !args.run_mode.produces_interpretable() {
-        eprintln!(
-            "Cannot interpret run type {} because it doesn't produce a bril program.",
-            args.run_mode
-        );
-        return;
-    }
-
-    let file = match args.file.extension().and_then(OsStr::to_str) {
-        Some("rs") => TestProgram::RustFile(args.file.clone()),
-        Some("bril") => TestProgram::BrilFile(args.file.clone()),
-        Some(x) => panic!("unexpected file extension {x}"),
-        None => panic!("could not parse file extension"),
-    };
-
-    let run = Run {
-        prog_with_args: file.read_program(),
-        test_type: args.run_mode,
-        interp: if args.interp {
-            InterpMode::Interp
-        } else {
-            InterpMode::None
+  // enable logging
+  // env_logger::init();
+  let rust_log = std::env::var("RUST_LOG").unwrap_or_else(|_| "warn".to_string());
+  match env_logger::Builder::new()
+    .format(|buf, record| {
+      writeln!(
+        buf,
+        "{}:{} {} [{}] - {}",
+        record.file().unwrap_or("unknown"),
+        record.line().unwrap_or(0),
+        chrono::Local::now().format("%Y-%m-%dT%H:s%M:%S"),
+        {
+          let level = record.level();
+          let color = match level {
+            log::Level::Error => colored::Color::Red,
+            log::Level::Warn => colored::Color::Yellow,
+            log::Level::Info => colored::Color::Green,
+            log::Level::Debug => colored::Color::Blue,
+            log::Level::Trace => colored::Color::Magenta,
+          };
+          format!("{}", level.to_string().color(color))
         },
-        profile_out: args.profile_out,
-        output_path: args.output_path,
-        optimized_llvm_out: args.llvm_output_dir,
-        optimize_egglog: args.optimize_egglog,
-        optimize_brilift: args.optimize_brilift,
-        optimize_bril_llvm: args.optimize_bril_llvm,
-        add_timing: args.add_timing,
-        eggcc_config: EggccConfig {
-            schedule: args.eggcc_schedule.unwrap_or(Schedule::default()),
-            stop_after_n_passes: args.stop_after_n_passes.unwrap_or(usize::MAX),
-            linearity: !args.no_linearity,
-        },
-    };
+        record.args()
+      )
+    })
+    .filter_level(log::LevelFilter::from_str(&rust_log).unwrap())
+    .try_init()
+  {
+    Ok(_) => {
+      log::debug!("Logger is set");
+    }
+    Err(_e) => {
+      log::debug!("Logger has been set");
+    }
+  }
 
-    let result = match run.run() {
-        Ok(result) => result,
-        Err(error) => {
-            panic!("{}", error);
-        }
-    };
+  if let Some(debug_dir) = args.debug_dir {
+    if let Result::Err(error) = visualize(TestProgram::BrilFile(args.file.clone()), debug_dir) {
+      eprintln!("{}", error);
+      return;
+    }
+  }
 
-    if args.interp {
-        // just print out the result of interpreting the program
-        println!("{}", result.result_interpreted.unwrap());
-        if let Some(cycles_taken) = result.cycles_taken {
-            eprintln!("{}", cycles_taken);
-        }
-    } else if let &[visualization] = &result.visualizations.as_slice() {
-        // when there is just one visualization, print it out without
-        // the "visualization of: {}" header for convenience
-        println!("{}", visualization.result);
+  if args.interp && !args.run_mode.produces_interpretable() {
+    eprintln!(
+      "Cannot interpret run type {} because it doesn't produce a bril program.",
+      args.run_mode
+    );
+    return;
+  }
+
+  let file = match args.file.extension().and_then(OsStr::to_str) {
+    Some("rs") => TestProgram::RustFile(args.file.clone()),
+    Some("bril") => TestProgram::BrilFile(args.file.clone()),
+    Some(x) => panic!("unexpected file extension {x}"),
+    None => panic!("could not parse file extension"),
+  };
+
+  let run = Run {
+    prog_with_args: file.read_program(),
+    test_type: args.run_mode,
+    interp: if args.interp {
+      InterpMode::Interp
     } else {
-        // otherwise, print out each visualization with a header
-        for visualization in result.visualizations {
-            println!("visualization of {}:", visualization.name);
-            println!("{}", visualization.result);
-            println!();
-        }
+      InterpMode::None
+    },
+    profile_out: args.profile_out,
+    output_path: args.output_path,
+    optimized_llvm_out: args.llvm_output_dir,
+    optimize_egglog: args.optimize_egglog,
+    optimize_brilift: args.optimize_brilift,
+    optimize_bril_llvm: args.optimize_bril_llvm,
+    add_timing: args.add_timing,
+    eggcc_config: EggccConfig {
+      schedule: args.eggcc_schedule.unwrap_or(Schedule::default()),
+      stop_after_n_passes: args.stop_after_n_passes.unwrap_or(usize::MAX),
+      linearity: !args.no_linearity,
+    },
+  };
+
+  let result = match run.run() {
+    Ok(result) => result,
+    Err(error) => {
+      panic!("{}", error);
     }
+  };
+
+  if args.interp {
+    // just print out the result of interpreting the program
+    println!("{}", result.result_interpreted.unwrap());
+    if let Some(cycles_taken) = result.cycles_taken {
+      eprintln!("{}", cycles_taken);
+    }
+  } else if let &[visualization] = &result.visualizations.as_slice() {
+    // when there is just one visualization, print it out without
+    // the "visualization of: {}" header for convenience
+    println!("{}", visualization.result);
+  } else {
+    // otherwise, print out each visualization with a header
+    for visualization in result.visualizations {
+      println!("visualization of {}:", visualization.name);
+      println!("{}", visualization.result);
+      println!();
+    }
+  }
 }

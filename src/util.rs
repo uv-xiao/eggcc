@@ -446,9 +446,24 @@ pub struct RunOutput {
     pub cycles_taken: Option<u64>,
 }
 
+/// self_trace is a simple wrapper around log::warn!
+/// it should only be used when TRACE_MORE is set to true/1
+macro_rules! self_trace {
+  ($($arg:tt)*) => {
+      if std::env::var("UV_TRACE").unwrap_or_else(|_| "0".to_string()) != "0" {
+          log::warn!($($arg)*);
+      }
+  };
+}
+
+pub(crate) use self_trace;
+
+
 impl Run {
     fn optimize_bril(program: &Program, config: &EggccConfig) -> Result<Program, EggCCError> {
         let rvsdg = Optimizer::program_to_rvsdg(program)?;
+        self_trace!("bril converted to rvsdg");
+        
         let (dag, mut cache) = rvsdg.to_dag_encoding(true);
         let optimized =
             dag_in_context::optimize(&dag, &mut cache, config).map_err(EggCCError::EggLog)?;
