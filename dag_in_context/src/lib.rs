@@ -1,11 +1,11 @@
 use clap::ValueEnum;
 use egglog::{Term, TermDag};
-use greedy_dag_extractor::{extract, serialized_egraph, DefaultCostModel};
+use greedy_dag_extractor::{extract, has_debug_exprs, serialized_egraph, DefaultCostModel};
 use indexmap::IndexMap;
 use interpreter::Value;
-use schedule::rulesets;
+use schedule::{rulesets, CompilerPass};
 use schema::TreeProgram;
-use std::{cmp::min, fmt::Write, usize};
+use std::{fmt::Write, i64};
 use to_egglog::TreeToEgglog;
 
 use crate::{
@@ -41,14 +41,16 @@ pub fn prologue() -> String {
         include_str!("schema.egg"),
         include_str!("type_analysis.egg"),
         include_str!("utility/util.egg"),
+        include_str!("utility/terms.egg"),
         &optimizations::is_valid::rules().join("\n"),
         &optimizations::is_resolved::rules().join("\n"),
         &optimizations::body_contains::rules().join("\n"),
-        &optimizations::purity_analysis::rules().join("\n"),
+        include_str!("optimizations/purity_analysis.egg"),
         // TODO cond inv code motion with regions
         //&optimizations::conditional_invariant_code_motion::rules().join("\n"),
         include_str!("utility/add_context.egg"),
         include_str!("utility/context-prop.egg"),
+        include_str!("utility/term-subst.egg"),
         include_str!("utility/subst.egg"),
         include_str!("utility/context_of.egg"),
         include_str!("utility/canonicalize.egg"),
@@ -56,6 +58,7 @@ pub fn prologue() -> String {
         include_str!("utility/drop_at.egg"),
         include_str!("interval_analysis.egg"),
         include_str!("optimizations/switch_rewrites.egg"),
+        include_str!("optimizations/select.egg"),
         include_str!("optimizations/peepholes.egg"),
         &optimizations::memory::rules(),
         include_str!("optimizations/memory.egg"),
@@ -242,6 +245,7 @@ pub fn check_roundtrip_egraph(program: &TreeProgram) {
         &mut termdag,
         DefaultCostModel,
         true,
+        false,
     );
 
     let (original_with_ctx, _) = program.add_dummy_ctx();
@@ -260,22 +264,45 @@ pub enum Schedule {
     Parallel,
     Sequential,
 }
+impl Schedule {
+    pub fn get_schedule_list(&self) -> Vec<CompilerPass> {
+        match self {
+            Schedule::Parallel => parallel_schedule(),
+            Schedule::Sequential => schedule::mk_sequential_schedule(),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct EggccConfig {
     pub schedule: Schedule,
-    pub stop_after_n_passes: usize,
+    /// Stop after this many passes.
+    /// If stop_after_n_passes is negative,
+    /// run [0 ... schedule.len() + stop_after_n_passes] passes.
+    pub stop_after_n_passes: i64,
     /// For debugging, disable extraction with linearity
     /// and just return the first program found.
     /// This produces unsound results but is useful for seeing the intermediate extracted result.
     pub linearity: bool,
 }
 
+impl EggccConfig {
+    pub fn get_normalized_cutoff(&self, schedule_len: usize) -> usize {
+        if self.stop_after_n_passes < 0 {
+            (schedule_len as i64 + self.stop_after_n_passes) as usize
+        } else if self.stop_after_n_passes > schedule_len as i64 {
+            schedule_len
+        } else {
+            self.stop_after_n_passes as usize
+        }
+    }
+}
+
 impl Default for EggccConfig {
     fn default() -> Self {
         Self {
             schedule: Schedule::default(),
-            stop_after_n_passes: usize::MAX,
+            stop_after_n_passes: i64::MAX,
             linearity: true,
         }
     }
@@ -287,21 +314,13 @@ pub fn optimize(
     cache: &mut ContextCache,
     eggcc_config: &EggccConfig,
 ) -> std::result::Result<TreeProgram, egglog::Error> {
-    let schedule_list = match eggcc_config.schedule {
-        Schedule::Parallel => parallel_schedule(),
-        Schedule::Sequential => schedule::mk_sequential_schedule(),
-    };
+    let schedule_list = eggcc_config.schedule.get_schedule_list();
     let mut res = program.clone();
 
-    for (schedule, i) in schedule_list
-        .iter()
-        .zip(0..eggcc_config.stop_after_n_passes)
-    {
+    let cutoff = eggcc_config.get_normalized_cutoff(schedule_list.len());
+    for (i, schedule) in schedule_list[..cutoff].iter().enumerate() {
         let mut should_maintain_linearity = true;
-        if i == min(
-            eggcc_config.stop_after_n_passes - 1,
-            schedule_list.len() - 1,
-        ) {
+        if i == cutoff - 1 {
             should_maintain_linearity = eggcc_config.linearity;
         }
 
@@ -336,7 +355,14 @@ pub fn optimize(
             egraph.parse_and_run_program(None, &egglog_prog)?;
 
             let (serialized, unextractables) = serialized_egraph(egraph);
+
             let mut termdag = egglog::TermDag::default();
+            let has_debug_exprs = has_debug_exprs(&serialized);
+            if has_debug_exprs {
+                log::info!(
+                    "Program has debug expressions, extracting them instead of original program."
+                );
+            }
             let (_res_cost, iter_result) = extract(
                 &res,
                 batch,
@@ -345,8 +371,15 @@ pub fn optimize(
                 &mut termdag,
                 DefaultCostModel,
                 should_maintain_linearity,
+                has_debug_exprs,
             );
+
             res = iter_result;
+
+            if has_debug_exprs {
+                log::info!("Program has debug expressions, stopping pass {}.", i);
+                return Ok(res);
+            }
         }
 
         // now add context to res again for the next pass, since context might be less specific

@@ -34,27 +34,35 @@ struct Args {
   /// (only used when interpreting)
   bril_args: Vec<String>,
 
-  /// Where to put the executable (only for the brillift and llvm modes)
-  #[clap(short)]
-  output_path: Option<String>,
-  /// Where to put the optimized llvm file (for the llvm mode)
-  #[clap(long)]
-  llvm_output_dir: Option<PathBuf>,
-  /// For the LLVM run mode, choose whether to first run eggcc
-  /// to optimize the bril program before going to LLVM.
-  #[clap(long)]
-  optimize_egglog: Option<bool>,
-  /// For the Cranelift run mode, choose between O0 optimization and O3.
-  #[clap(long)]
-  optimize_brilift: Option<bool>,
-  /// For the LLVM run mode, choose between O0 and O3.
-  #[clap(long)]
-  optimize_bril_llvm: Option<LLVMOptLevel>,
-  /// For the eggcc schedule, choose between the sequential and parallel schedules.
-  #[clap(long)]
-  eggcc_schedule: Option<Schedule>,
-  #[clap(long)]
-  stop_after_n_passes: Option<usize>,
+    /// Where to put the executable (only for the brillift and llvm modes)
+    #[clap(short)]
+    output_path: Option<String>,
+    /// Where to put the optimized llvm file (for the llvm mode)
+    #[clap(long)]
+    llvm_output_dir: Option<PathBuf>,
+    /// For the LLVM run mode, choose whether to first run eggcc
+    /// to optimize the bril program before going to LLVM.
+    #[clap(long)]
+    optimize_egglog: Option<bool>,
+    /// For the Cranelift run mode, choose between O0 optimization and O3.
+    #[clap(long)]
+    optimize_brilift: Option<bool>,
+    /// For the LLVM run mode, choose between O0 and O3.
+    #[clap(long)]
+    optimize_bril_llvm: Option<LLVMOptLevel>,
+    /// For the eggcc schedule, choose between the sequential and parallel schedules.
+    #[clap(long)]
+    eggcc_schedule: Option<Schedule>,
+    /// Eggcc by default performs several passes.
+    /// This argument specifies how many passes to run (all passes by default).
+    /// If stop_after_n_passes is negative,
+    /// run [0 ... schedule.len() + stop_after_n_passes] passes.
+    ///
+    /// This flag also works with `--run-mode egglog` mode,
+    /// where it prints the egglog program being processed by the last pass
+    /// this flag specifies.
+    #[clap(long)]
+    stop_after_n_passes: Option<i64>,
 
   /// Turn off enforcement that the output program uses
   /// memory linearly. This can give an idea of what
@@ -143,7 +151,7 @@ fn main() {
     add_timing: args.add_timing,
     eggcc_config: EggccConfig {
       schedule: args.eggcc_schedule.unwrap_or(Schedule::default()),
-      stop_after_n_passes: args.stop_after_n_passes.unwrap_or(usize::MAX),
+      stop_after_n_passes: args.stop_after_n_passes.unwrap_or(i64::MAX),
       linearity: !args.no_linearity,
     },
   };
