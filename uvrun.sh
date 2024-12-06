@@ -1,10 +1,11 @@
 #! /bin/bash
 
 # parse options:
-# uvrun.sh <input> [-d <debug_dir> ] [-r <run_mode>] [-t]
+# uvrun.sh <input> [-d <debug_dir> ] [-r <run_mode>] [-t] [-f]
 debug_dir="temp"
 run_mode="optimize"
 trace_more="0"
+file="0"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -18,6 +19,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -t|--trace)
             trace_more="1"
+            shift
+            ;;
+        -f|--file)
+            file="1"
             shift
             ;;
         *)
@@ -36,6 +41,10 @@ fi
 basename=$(basename $input)
 basename_wo_ext="${basename%.*}"
 
+stderr_redirect=""
+if [ $file -eq 1 ]; then
+    stderr_redirect="2> $debug_dir/$basename_wo_ext.stderr.ansi"
+fi
 
-echo "UV_TRACE=$trace_more RUST_LOG=warn cargo run -- $input --debug-dir $debug_dir --run-mode $run_mode > $debug_dir/$basename_wo_ext.bril 2> $debug_dir/$basename_wo_ext.stderr.ansi"
-UV_TRACE=$trace_more RUST_LOG=warn cargo run -- $input --debug-dir $debug_dir --run-mode $run_mode > $debug_dir/$basename_wo_ext.bril 2> $debug_dir/$basename_wo_ext.stderr.ansi
+echo "UV_TRACE=$trace_more RUST_LOG=warn cargo run -- $input --debug-dir $debug_dir --run-mode $run_mode > $debug_dir/$basename_wo_ext.out $stderr_redirect"
+UV_TRACE=$trace_more RUST_LOG=warn cargo run -- $input --debug-dir $debug_dir --run-mode $run_mode > $debug_dir/$basename_wo_ext.out $stderr_redirect

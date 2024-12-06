@@ -422,6 +422,8 @@ fn load_after_write() -> crate::Result {
     let state = get(val_and_state, 1);
     let res = tprint(val, state);
 
+    println!("{}", res);
+
     memory_egglog_test(
         &format!("{res}"),
         &format!(

@@ -464,6 +464,8 @@ impl Run {
         let rvsdg = Optimizer::program_to_rvsdg(program)?;
         self_trace!("bril converted to rvsdg");
         
+        // self_trace!("rvsdg\n{:#?}", rvsdg);
+
         let (dag, mut cache) = rvsdg.to_dag_encoding(true);
         let optimized =
             dag_in_context::optimize(&dag, &mut cache, config).map_err(EggCCError::EggLog)?;
@@ -520,6 +522,7 @@ impl Run {
         let mut res = vec![];
         for test_type in [
             RunMode::RvsdgConversion,
+            RunMode::OptimizedRvsdg,
             // RunMode::RvsdgRoundTrip,
             // RunMode::CfgRoundTrip,
             // RunMode::OptimizeDirectJumps,

@@ -235,6 +235,7 @@ impl fmt::Debug for RvsdgFunction {
 /// For now, it's simply a vector of [RvsdgFunction]s.
 /// In the future, we may want functions to be represented within
 /// the RVSDG.
+#[derive(Debug)]
 pub struct RvsdgProgram {
     /// A list of functions in this program.
     /// The last function is the entry point (main function).
