@@ -46,5 +46,11 @@ if [ $file -eq 1 ]; then
     stderr_redirect="2> $debug_dir/$basename_wo_ext.stderr.ansi"
 fi
 
+echo "mkdir -p $debug_dir"
+mkdir -p $debug_dir
+
+echo "UV_TRACE=$trace_more RUST_LOG=warn cargo run -- $input --run-mode egglog > $debug_dir/$basename_wo_ext.egg $stderr_redirect"
+UV_TRACE=$trace_more RUST_LOG=warn cargo run -- $input --run-mode egglog > $debug_dir/$basename_wo_ext.egg $stderr_redirect
+
 echo "UV_TRACE=$trace_more RUST_LOG=warn cargo run -- $input --debug-dir $debug_dir --run-mode $run_mode > $debug_dir/$basename_wo_ext.out $stderr_redirect"
 UV_TRACE=$trace_more RUST_LOG=warn cargo run -- $input --debug-dir $debug_dir --run-mode $run_mode > $debug_dir/$basename_wo_ext.out $stderr_redirect

@@ -94,20 +94,20 @@ fn print_with_intermediate_helper(
     return var.clone();
   }
 
-    match &term {
-        Term::Lit(_) => termdag.to_string(&term),
-        Term::Var(_) => termdag.to_string(&term),
-        Term::App(head, children) => {
-            let child_vars = children
-                .iter()
-                .map(|child| {
-                    print_with_intermediate_helper(termdag, termdag.get(*child).clone(), cache, res)
-                })
-                .collect::<Vec<String>>()
-                .join(" ");
-            let fresh_var = format!("__tmp{}", cache.len());
-            writeln!(res, "(let {fresh_var} ({head} {child_vars}))").unwrap();
-            cache.insert(term, fresh_var.clone());
+  match &term {
+    Term::Lit(_) => termdag.to_string(&term),
+    Term::Var(_) => termdag.to_string(&term),
+    Term::App(head, children) => {
+      let child_vars = children
+        .iter()
+        .map(|child| {
+          print_with_intermediate_helper(termdag, termdag.get(*child).clone(), cache, res)
+        })
+        .collect::<Vec<String>>()
+        .join(" ");
+      let fresh_var = format!("__tmp{}", cache.len());
+      writeln!(res, "(let {fresh_var} ({head} {child_vars}))").unwrap();
+      cache.insert(term, fresh_var.clone());
 
       fresh_var
     }
@@ -453,6 +453,13 @@ pub fn egglog_test(
   egglog_test_internal(build, check, progs, input, expected, expected_log, false)
 }
 
+/// remove empty lines from a string
+/// replace empty lines with ";"
+fn reduce_redundant_nlines(s: String) -> String {
+  s.lines().map(|line| if line.is_empty() { ";" } else { line }).collect::<Vec<&str>>().join("\n")
+  // s
+}
+
 /// Runs an egglog test.
 /// `build` is egglog code that runs before the running rules.
 /// `check` is egglog code that runs after the running rules.
@@ -493,12 +500,14 @@ fn egglog_test_internal(
 
   let program = format!(
     "{}\n{build}\n{}\n{check}\n",
-    prologue(),
-    parallel_schedule()
-      .iter()
-      .map(|pass| pass.egglog_schedule().to_string())
-      .collect::<Vec<String>>()
-      .join("\n"),
+    reduce_redundant_nlines(prologue()),
+    reduce_redundant_nlines(
+      parallel_schedule()
+        .iter()
+        .map(|pass| pass.egglog_schedule().to_string())
+        .collect::<Vec<String>>()
+        .join("\n")
+    ),
   );
 
   if print_program {

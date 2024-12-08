@@ -528,11 +528,13 @@ impl Run {
             // RunMode::OptimizeDirectJumps,
             RunMode::RvsdgToCfg,
             RunMode::DagConversion,
-            // RunMode::DagOptimize,
+            RunMode::DagOptimize,
             // RunMode::DagRoundTrip,
             // RunMode::Optimize,
             // RunMode::CheckExtractIdentical,
-            // RunMode::TestPrettyPrint,
+            RunMode::TestPrettyPrint,
+            RunMode::OptimizedPrettyPrint,
+            RunMode::PrettyPrint,
         ] {
             let default = Run::new(prog.clone(), test_type);
             if test_type.produces_interpretable() {
