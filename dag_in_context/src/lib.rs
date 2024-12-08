@@ -94,18 +94,20 @@ fn print_with_intermediate_helper(
     return var.clone();
   }
 
-  match &term {
-    Term::Lit(_) => termdag.to_string(&term),
-    Term::Var(_) => termdag.to_string(&term),
-    Term::App(head, children) => {
-      let child_vars = children
-        .iter()
-        .map(|child| print_with_intermediate_helper(termdag, termdag.get(*child), cache, res))
-        .collect::<Vec<String>>()
-        .join(" ");
-      let fresh_var = format!("__tmp{}", cache.len());
-      writeln!(res, "(let {fresh_var} ({head} {child_vars}))").unwrap();
-      cache.insert(term, fresh_var.clone());
+    match &term {
+        Term::Lit(_) => termdag.to_string(&term),
+        Term::Var(_) => termdag.to_string(&term),
+        Term::App(head, children) => {
+            let child_vars = children
+                .iter()
+                .map(|child| {
+                    print_with_intermediate_helper(termdag, termdag.get(*child).clone(), cache, res)
+                })
+                .collect::<Vec<String>>()
+                .join(" ");
+            let fresh_var = format!("__tmp{}", cache.len());
+            writeln!(res, "(let {fresh_var} ({head} {child_vars}))").unwrap();
+            cache.insert(term, fresh_var.clone());
 
       fresh_var
     }
