@@ -166,7 +166,8 @@ pub fn build_program(
     let func = program.get_function(func).unwrap();
     let term = func.to_egglog_with(&mut tree_state);
     let _func_var =
-      print_with_intermediate_helper(&tree_state.termdag, term, &mut term_cache, &mut printed);
+      print_with_intermediate_helper(&tree_state.termdag, term.clone(), &mut term_cache, &mut printed);
+    // eprintln!("func_var {}\t\t <-> \tterm {:?}", func_var, tree_state.termdag.to_string(&term));
   }
 
   let loop_context_unions =
@@ -184,6 +185,8 @@ pub fn build_program(
     )
     .unwrap();
   }
+
+  // eprintln!("{:#?}", term_cache);
 
   let prologue = prologue();
 
@@ -456,7 +459,10 @@ pub fn egglog_test(
 /// remove empty lines from a string
 /// replace empty lines with ";"
 fn reduce_redundant_nlines(s: String) -> String {
-  s.lines().map(|line| if line.is_empty() { ";" } else { line }).collect::<Vec<&str>>().join("\n")
+  s.lines()
+    .map(|line| if line.trim().is_empty() { ";" } else { line })
+    .collect::<Vec<&str>>()
+    .join("\n")
   // s
 }
 
@@ -498,16 +504,24 @@ fn egglog_test_internal(
     }
   }
 
+  let prologue_wo_empty_lines = reduce_redundant_nlines(prologue());
+  let schedule_wo_empty_lines = reduce_redundant_nlines(
+    parallel_schedule()
+      .iter()
+      .map(|pass| pass.egglog_schedule().to_string())
+      .collect::<Vec<String>>()
+      .join("\n"),
+  );
+
   let program = format!(
-    "{}\n{build}\n{}\n{check}\n",
-    reduce_redundant_nlines(prologue()),
-    reduce_redundant_nlines(
-      parallel_schedule()
-        .iter()
-        .map(|pass| pass.egglog_schedule().to_string())
-        .collect::<Vec<String>>()
-        .join("\n")
-    ),
+    ";Here is the <PROLOGUE>\n{}\n\n;Here is the <BUILD>\n{build}\n(push)\n\n;Here is the <SCHEDULE>\n{}\n\n;Here is the <CHECK>\n{check}\n\n(run-schedule debug-deletes)\n(push)\n",
+    prologue_wo_empty_lines,
+    schedule_wo_empty_lines,
+  );
+
+  let origin_build = format!(
+    ";Here is the <PROLOGUE>\n{}\n\n; Here is the <BUILD>\n{build}\n\n(run-schedule debug-deletes)\n(push)\n",
+    prologue_wo_empty_lines,
   );
 
   if print_program {
@@ -516,17 +530,35 @@ fn egglog_test_internal(
     // print to file: $(pwd)/temp/egglog_test.egg
     let current_dir = std::env::current_dir().unwrap();
     eprintln!(
+      "Writing original build to {}",
+      current_dir.join("temp/egglog_buildonly.egg").display()
+    );
+    eprintln!(
       "Writing egglog test to {}",
       current_dir.join("temp/egglog_test.egg").display()
     );
+
+
+    eprintln!(
+      "prologue lines: {}",
+      prologue_wo_empty_lines.lines().count()
+    );
+    eprintln!(
+      "schedule lines: {}",
+      schedule_wo_empty_lines.lines().count()
+    );
+
     // if the file doesn't exist, create it
-    if !current_dir.join("temp/egglog_test.egg").exists() {
+    if !current_dir.join("temp").exists() {
       std::fs::create_dir_all(current_dir.join("temp")).unwrap();
     }
     std::fs::write(current_dir.join("temp/egglog_test.egg"), program.clone()).unwrap();
+    std::fs::write(current_dir.join("temp/egglog_buildonly.egg"), origin_build.clone()).unwrap();
+
   }
 
-  let res = egglog::EGraph::default()
+  let mut egraph = egglog::EGraph::default();
+  let res = egraph
     .parse_and_run_program(None, &program)
     .map(|lines| {
       for line in lines {

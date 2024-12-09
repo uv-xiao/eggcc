@@ -36,3 +36,6 @@ runtime/rt.o
 .DS_Store
 
 temp/
+
+node_modules/
+package*.json
