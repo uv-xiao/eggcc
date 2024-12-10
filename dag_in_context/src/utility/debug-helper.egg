@@ -140,3 +140,28 @@
 (rule ((IntT))
       ((delete (IntT)))
       :ruleset debug-deletes)
+
+(rule ((bop-of-type a b))
+      ((delete (bop-of-type a b)))
+      :ruleset debug-deletes)
+
+(rule ((PureType a))
+      ((delete (PureType a)))
+      :ruleset debug-deletes)
+
+(rule ((UnaryOpIsPure a))
+      ((delete (UnaryOpIsPure a)))
+      :ruleset debug-deletes)
+
+
+(rule ((TernaryOpIsPure a))
+      ((delete (TernaryOpIsPure a)))
+      :ruleset debug-deletes)
+
+(rule ((Accum-Bop a b c))
+      ((delete (Accum-Bop a b c)))
+      :ruleset debug-deletes)
+
+(rule ((PureBaseType a))
+      ((delete (PureBaseType a)))
+      :ruleset debug-deletes)

@@ -1267,8 +1267,15 @@ fn dag_extraction_test(prog: &TreeProgram, expected_cost: NotNan<f64>) {
     let string_prog = {
         let (term, termdag) = prog.to_egglog();
         let printed = print_with_intermediate_vars(&termdag, term);
-        format!("{}\n{printed}\n", prologue(),)
+        format!("{}\n;<PROG>\n{printed}\n", prologue(),)
     };
+
+    // print to temp file
+
+    let debug_prog = format!("{}\n(run-schedule (saturate debug-deletes))", string_prog);
+    let current_dir = std::env::current_dir().unwrap();
+    std::fs::write(current_dir.join("temp/extract_test.egg"), debug_prog.clone()).unwrap();
+    eprintln!("Wrote to temp/extract_test.egg");
 
     let mut egraph = egglog::EGraph::default();
     egraph.parse_and_run_program(None, &string_prog).unwrap();
